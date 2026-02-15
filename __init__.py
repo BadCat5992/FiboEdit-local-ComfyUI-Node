@@ -1,9 +1,9 @@
-from .fibo_node import FiboLocalEdit
+from .fibo_node import FiboEditReal
 
 NODE_CLASS_MAPPINGS = {
-    "FiboLocalEdit": FiboLocalEdit
+    "FiboEditReal": FiboEditReal
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FiboLocalEdit": "Fibo Local Edit (Latent)"
+    "FiboEditReal": "Fibo Edit (8B Model)"
 }
