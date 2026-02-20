@@ -1,8 +1,8 @@
-torch
-numpy
-Pillow
-diffusers
+diffusers>=0.33.0
 transformers
 accelerate
 huggingface_hub
 sentencepiece
+torch
+numpy
+Pillow

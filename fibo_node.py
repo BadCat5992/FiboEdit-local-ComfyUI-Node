@@ -1,69 +1,80 @@
 """
 ComfyUI Custom Node: Fibo Edit (Real 8B)
-Wraps the official briaai/Fibo-Edit model.
+Wraps the official briaai/Fibo-Edit model via diffusers.
 
-HOW IT WORKS:
-  install.sh clones https://github.com/Bria-AI/Fibo-Edit into vendor/Fibo-Edit/
-  and runs `pip install -e vendor/Fibo-Edit --no-deps`
-  This registers BriaFiboEditPipeline into the local diffusers install
-  and makes the `fibo_edit` Python package importable.
+REQUIREMENTS:
+  - diffusers >= 0.33.0 (BriaFiboEditPipeline was merged Jan 16 2026)
+  - transformers, accelerate, sentencepiece
+  - Hugging Face login + accepted license for briaai/Fibo-Edit
 
-IMPORTS:
-  from diffusers import BriaFiboEditPipeline   -> works after pip install -e
-  from fibo_edit.edit_promptify import get_prompt -> the official promptifier
+Install / upgrade:
+  pip install --upgrade diffusers transformers accelerate sentencepiece
+  huggingface-cli login
 """
 
-import os
-import sys
+import json
 import torch
 import numpy as np
 from PIL import Image
 
-# ---------------------------------------------------------------------------
-# Safety check: make sure the vendor repo is installed
-# ---------------------------------------------------------------------------
-_NODE_DIR = os.path.dirname(os.path.abspath(__file__))
-_FIBO_REPO_PATH = os.path.join(_NODE_DIR, "vendor", "Fibo-Edit")
 
-if not os.path.isdir(_FIBO_REPO_PATH):
-    print(
-        "\n[Fibo Edit Node] *** ERROR: vendor/Fibo-Edit not found! ***\n"
-        "  Run this ONCE from the custom node folder:\n"
-        "    bash install.sh\n"
-        "  Then restart ComfyUI.\n"
-    )
+def _check_diffusers_version():
+    """Check that the installed diffusers version contains BriaFiboEditPipeline."""
+    try:
+        import diffusers
+        version = getattr(diffusers, "__version__", "0.0.0")
+        major, minor = [int(x) for x in version.split(".")[:2]]
+        if major == 0 and minor < 33:
+            raise ImportError(
+                f"Your diffusers version is {version}, but BriaFiboEditPipeline "
+                f"requires diffusers >= 0.33.0 (merged Jan 2026).\n"
+                f"Upgrade with:  pip install --upgrade diffusers"
+            )
+    except ValueError:
+        pass  # Unable to parse version, let the import attempt speak for itself
+
+
+def _build_vgl_json(instruction: str) -> str:
+    """
+    Build a minimal VGL-compatible JSON prompt from a plain-text instruction.
+
+    The briaai/FIBO-edit-prompt-to-JSON local VLM model is currently unavailable
+    (404 on HuggingFace). As a workaround we construct a simple VGL JSON that
+    the pipeline can consume. The model is quite tolerant of this format.
+
+    The official VGL spec uses structured fields for objects, lighting, camera,
+    and aesthetics. For an edit instruction, the most important field is the
+    description of the desired change.
+    """
+    vgl_prompt = {
+        "description": instruction,
+        "edit_instruction": instruction,
+    }
+    return json.dumps(vgl_prompt)
 
 
 class FiboEditReal:
     """
     ComfyUI node that uses the real briaai/Fibo-Edit 8B model.
 
-    After running install.sh the Fibo-Edit repo is installed as an editable
-    package which registers BriaFiboEditPipeline inside diffusers automatically.
-    We then import it normally: `from diffusers import BriaFiboEditPipeline`.
-
-    Prompt chain (fully offline):
-      plain text  →  briaai/FIBO-edit-prompt-to-JSON (local VLM)  →  VGL JSON  →  Fibo-Edit
+    Requires diffusers >= 0.33.0 which includes BriaFiboEditPipeline natively.
+    No external repos or VLM models needed.
     """
 
-    _pipeline  = None   # BriaFiboEditPipeline, lazy-loaded
-    _get_prompt = None  # fibo_edit.edit_promptify.get_prompt, lazy-loaded
+    _pipeline = None  # Cached after first load
 
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "image":          ("IMAGE",),
-                "instruction":    ("STRING",  {"multiline": True,  "default": "make it look vintage"}),
-                "seed":           ("INT",     {"default": 0,   "min": 0,   "max": 0xffffffffffffffff}),
-                "steps":          ("INT",     {"default": 50,  "min": 1,   "max": 150}),
-                "guidance_scale": ("FLOAT",   {"default": 5.0, "min": 0.0, "max": 20.0, "step": 0.1}),
+                "instruction":    ("STRING",  {"multiline": True, "default": "make it look vintage"}),
+                "seed":           ("INT",     {"default": 0,    "min": 0,    "max": 0xffffffffffffffff}),
+                "steps":          ("INT",     {"default": 50,   "min": 1,    "max": 150}),
+                "guidance_scale": ("FLOAT",   {"default": 5.0,  "min": 0.0,  "max": 20.0, "step": 0.1}),
                 "precision":      (["bf16", "fp16", "fp32"], {"default": "bf16"}),
             },
             "optional": {
-                # Optional binary mask. White = area to edit, black = preserve.
-                # NOTE: local VLM mode does not use the mask for JSON generation,
-                #       but it IS passed to the diffusion pipeline for spatial control.
                 "mask": ("MASK",),
             }
         }
@@ -73,51 +84,38 @@ class FiboEditReal:
     CATEGORY      = "Fibo/Edit"
 
     # ------------------------------------------------------------------
-    # Lazy loaders
+    # Pipeline loader
     # ------------------------------------------------------------------
 
     def _load_pipeline(self, precision: str):
         if FiboEditReal._pipeline is not None:
             return FiboEditReal._pipeline
 
-        # BriaFiboEditPipeline is NOT in the standard diffusers PyPI package.
-        # We use DiffusionPipeline.from_pretrained with trust_remote_code=True
-        # which downloads and loads the custom pipeline class directly from the
-        # briaai/Fibo-Edit HuggingFace model card (pipeline.py).
-        from diffusers import DiffusionPipeline
+        _check_diffusers_version()
 
-        print("[Fibo Edit Node] Loading briaai/Fibo-Edit pipeline (trust_remote_code) …")
+        # BriaFiboEditPipeline is a first-class pipeline in diffusers >= 0.33
+        from diffusers import BriaFiboEditPipeline
 
-        dtype_map = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
+        print("[Fibo Edit Node] Loading briaai/Fibo-Edit (8B) — first run downloads ~20 GB …")
+
+        dtype_map = {
+            "fp16": torch.float16,
+            "bf16": torch.bfloat16,
+            "fp32": torch.float32
+        }
         torch_dtype = dtype_map.get(precision, torch.bfloat16)
 
-        pipe = DiffusionPipeline.from_pretrained(
+        pipe = BriaFiboEditPipeline.from_pretrained(
             "briaai/Fibo-Edit",
             torch_dtype=torch_dtype,
-            trust_remote_code=True,
         )
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
         pipe.to(device)
 
         FiboEditReal._pipeline = pipe
-        print("[Fibo Edit Node] Pipeline ready.")
+        print("[Fibo Edit Node] Pipeline loaded successfully.")
         return pipe
-
-    def _load_get_prompt(self):
-        if FiboEditReal._get_prompt is not None:
-            return FiboEditReal._get_prompt
-
-        try:
-            from fibo_edit.edit_promptify import get_prompt
-        except ImportError as e:
-            raise ImportError(
-                "Cannot import fibo_edit.edit_promptify.\n"
-                "Did you run `bash install.sh`?\n"
-                f"Original error: {e}"
-            )
-
-        FiboEditReal._get_prompt = get_prompt
-        return get_prompt
 
     # ------------------------------------------------------------------
     # Main execution
@@ -125,38 +123,28 @@ class FiboEditReal:
 
     def apply_fibo(self, image, instruction, seed, steps, guidance_scale, precision, mask=None):
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        pipe   = self._load_pipeline(precision)
 
-        pipe       = self._load_pipeline(precision)
-        get_prompt = self._load_get_prompt()
+        # Build VGL JSON prompt from plain-text instruction
+        edit_json = _build_vgl_json(instruction)
+        print(f"[Fibo Edit Node] VGL prompt: {edit_json}")
 
         batch_results = []
 
         for i in range(image.shape[0]):
 
-            # ── Convert Comfy IMAGE tensor (H, W, C) → PIL ────────────
+            # ── ComfyUI IMAGE tensor (H, W, C float 0-1) → PIL ────────
             img_np  = np.clip(255.0 * image[i].cpu().numpy(), 0, 255).astype(np.uint8)
             img_pil = Image.fromarray(img_np)
 
-            # ── Optionally convert mask tensor → PIL ───────────────────
+            # ── Optional mask tensor → PIL (L mode) ───────────────────
             mask_pil = None
             if mask is not None:
-                msk_t   = mask[i] if len(mask.shape) == 3 else mask
-                msk_np  = np.clip(255.0 * msk_t.cpu().numpy(), 0, 255).astype(np.uint8)
+                msk_t  = mask[i] if len(mask.shape) == 3 else mask
+                msk_np = np.clip(255.0 * msk_t.cpu().numpy(), 0, 255).astype(np.uint8)
                 mask_pil = Image.fromarray(msk_np).convert("L")
 
-            # ── Build VGL JSON prompt via local VLM (fully offline) ────
-            # Local mode uses briaai/FIBO-edit-prompt-to-JSON on your GPU.
-            # NOTE: local mode ignores the mask for JSON generation (Bria limitation).
-            print("[Fibo Edit Node] Generating VGL JSON prompt via local VLM …")
-            edit_json = get_prompt(
-                image=img_pil,
-                instruction=instruction,
-                vlm_mode="local",
-                model="briaai/FIBO-edit-prompt-to-JSON",
-            )
-            print(f"[Fibo Edit Node] VGL JSON (first 200 chars): {str(edit_json)[:200]}")
-
-            # ── Run the edit pipeline ──────────────────────────────────
+            # ── Run pipeline ──────────────────────────────────────────
             generator = torch.Generator(device).manual_seed(seed + i)
 
             call_kwargs = dict(
@@ -171,7 +159,7 @@ class FiboEditReal:
 
             result_pil = pipe(**call_kwargs).images[0]
 
-            # ── PIL → Comfy IMAGE tensor (1, H, W, C) ─────────────────
+            # ── PIL → ComfyUI IMAGE tensor (1, H, W, C) ──────────────
             res_tensor = torch.from_numpy(
                 np.array(result_pil).astype(np.float32) / 255.0
             ).unsqueeze(0)

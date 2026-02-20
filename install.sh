@@ -1,37 +1,49 @@
 #!/usr/bin/env bash
-# Run this ONCE from the root of the custom node folder:
-#   bash install.sh
+# Run this ONCE to set up the Fibo Edit node.
+# Usage:  bash install.sh
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENDOR_DIR="$SCRIPT_DIR/vendor/Fibo-Edit"
 
-echo "=== Fibo Edit Node — One-time Setup ==="
+echo "=== Fibo Edit Node — Setup ==="
+echo ""
 
-# 1. Clone the Fibo-Edit source repo
-if [ -d "$VENDOR_DIR" ]; then
-    echo ">>> vendor/Fibo-Edit already exists, pulling latest …"
-    git -C "$VENDOR_DIR" pull
-else
-    echo ">>> Cloning Bria-AI/Fibo-Edit …"
-    git clone https://github.com/Bria-AI/Fibo-Edit "$VENDOR_DIR"
-fi
+# 1. Install / upgrade Python packages
+echo ">>> Installing requirements (upgrading diffusers to >= 0.33.0) …"
+pip install --upgrade -r "$SCRIPT_DIR/requirements.txt"
 
-# 2. Install the Fibo-Edit package in editable mode.
-#    This registers BriaFiboEditPipeline inside diffusers
-#    and makes `fibo_edit` importable.
-echo ">>> Installing Fibo-Edit package (editable) …"
-pip install -e "$VENDOR_DIR" --no-deps
+# 2. Verify diffusers version
+echo ""
+echo ">>> Checking diffusers version …"
+python -c "
+import diffusers
+v = diffusers.__version__
+print(f'  diffusers version: {v}')
+major, minor = [int(x) for x in v.split('.')[:2]]
+if major == 0 and minor < 33:
+    print('  ERROR: diffusers is still too old! Need >= 0.33.0')
+    print('  Try:  pip install --upgrade diffusers --force-reinstall')
+    exit(1)
+else:
+    print('  OK ✓')
+"
 
-# 3. Install this node's extra requirements
-echo ">>> Installing node requirements …"
-pip install -r "$SCRIPT_DIR/requirements.txt"
+# 3. Verify BriaFiboEditPipeline import
+echo ""
+echo ">>> Verifying BriaFiboEditPipeline import …"
+python -c "
+from diffusers import BriaFiboEditPipeline
+print('  BriaFiboEditPipeline import OK ✓')
+" || {
+    echo "  ERROR: BriaFiboEditPipeline not found even after upgrade."
+    echo "  Try:  pip install diffusers --force-reinstall --upgrade"
+    exit 1
+}
 
 echo ""
-echo "=== Done! ==="
+echo "=== Setup complete! ==="
 echo ""
 echo "Next steps:"
-echo "  1. Log in to Hugging Face:  huggingface-cli login"
-echo "  2. Accept the model license at https://huggingface.co/briaai/Fibo-Edit"
-echo "  3. Accept the VLM license   at https://huggingface.co/briaai/FIBO-edit-prompt-to-JSON"
-echo "  4. Restart ComfyUI"
+echo "  1. huggingface-cli login"
+echo "  2. Accept the license at https://huggingface.co/briaai/Fibo-Edit"
+echo "  3. Restart ComfyUI"
