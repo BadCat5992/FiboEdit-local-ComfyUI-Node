@@ -17,7 +17,7 @@ A custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that wrap
 ```bash
 cd ComfyUI/custom_nodes/
 git clone https://github.com/BadCat5992/FiboEdit-local-ComfyUI-Node
-cd cFiboEdit-local-ComfyUI-Node
+cd FiboEdit-local-ComfyUI-Node
 ```
 
 **Step 2 — Run install script** (downloads Fibo-Edit source + Python deps):
