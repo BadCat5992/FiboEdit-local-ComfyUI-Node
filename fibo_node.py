@@ -80,26 +80,21 @@ class FiboEditReal:
         if FiboEditReal._pipeline is not None:
             return FiboEditReal._pipeline
 
-        # This import works only AFTER `pip install -e vendor/Fibo-Edit`
-        # which registers the class in diffusers.
-        try:
-            from diffusers import BriaFiboEditPipeline
-        except ImportError as e:
-            raise ImportError(
-                "BriaFiboEditPipeline not found in diffusers.\n"
-                "Did you run `bash install.sh`? That script runs:\n"
-                "  pip install -e vendor/Fibo-Edit --no-deps\n"
-                f"Original error: {e}"
-            )
+        # BriaFiboEditPipeline is NOT in the standard diffusers PyPI package.
+        # We use DiffusionPipeline.from_pretrained with trust_remote_code=True
+        # which downloads and loads the custom pipeline class directly from the
+        # briaai/Fibo-Edit HuggingFace model card (pipeline.py).
+        from diffusers import DiffusionPipeline
 
-        print("[Fibo Edit Node] Loading BriaFiboEditPipeline from briaai/Fibo-Edit …")
+        print("[Fibo Edit Node] Loading briaai/Fibo-Edit pipeline (trust_remote_code) …")
 
         dtype_map = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
         torch_dtype = dtype_map.get(precision, torch.bfloat16)
 
-        pipe = BriaFiboEditPipeline.from_pretrained(
+        pipe = DiffusionPipeline.from_pretrained(
             "briaai/Fibo-Edit",
             torch_dtype=torch_dtype,
+            trust_remote_code=True,
         )
         device = "cuda" if torch.cuda.is_available() else "cpu"
         pipe.to(device)
