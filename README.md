@@ -16,7 +16,7 @@ A custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that wrap
 **Step 1 — Clone this node** into your ComfyUI custom_nodes folder:
 ```bash
 cd ComfyUI/custom_nodes/
-git clone https://github.com/BadCat5992/comfyui-fibo-edit
+git clone https://https://github.com/BadCat5992/FiboEdit-local-ComfyUI-Node
 cd comfyui-fibo-edit
 ```
 
