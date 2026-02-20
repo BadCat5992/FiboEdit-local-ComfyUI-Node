@@ -16,8 +16,8 @@ A custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that wrap
 **Step 1 — Clone this node** into your ComfyUI custom_nodes folder:
 ```bash
 cd ComfyUI/custom_nodes/
-git clone https://github.com/BadCat5992/FiboEdit-local-ComfyUI-Node
-cd FiboEdit-local-ComfyUI-Node
+git clone https://github.com/YOUR_USERNAME/comfyui-fibo-edit
+cd comfyui-fibo-edit
 ```
 
 **Step 2 — Run install script** (downloads Fibo-Edit source + Python deps):
