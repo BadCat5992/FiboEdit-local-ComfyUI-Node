@@ -15,12 +15,20 @@ echo ""
 echo ">>> Installing diffusers from git main branch (required for BriaFiboEditPipeline) …"
 pip install git+https://github.com/huggingface/diffusers.git
 
-# 2. Install other dependencies
+# 2. Install transformers from git main branch
+#    The BriaFiboEdit pipeline requires SmolLM3ForCausalLM which lives in
+#    transformers.models.smollm3 — only available on the main branch, not
+#    in any stable PyPI release yet.
+echo ""
+echo ">>> Installing transformers from git main branch (required for SmolLM3) …"
+pip install git+https://github.com/huggingface/transformers.git
+
+# 3. Install other dependencies
 echo ""
 echo ">>> Installing remaining dependencies …"
-pip install transformers accelerate huggingface_hub sentencepiece
+pip install accelerate huggingface_hub sentencepiece
 
-# 3. Verify BriaFiboEditPipeline import
+# 4. Verify BriaFiboEditPipeline import
 echo ""
 echo ">>> Verifying BriaFiboEditPipeline import …"
 python -c "

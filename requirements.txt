@@ -1,6 +1,6 @@
 --extra-index-url https://pypi.org/simple/
 git+https://github.com/huggingface/diffusers.git
-transformers
+git+https://github.com/huggingface/transformers.git
 accelerate
 huggingface_hub
 sentencepiece
