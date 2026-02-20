@@ -3,7 +3,7 @@
 A custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that wraps the official **[briaai/Fibo-Edit](https://huggingface.co/briaai/Fibo-Edit)** model (8B params).
 
 > [!IMPORTANT]
-> `BriaFiboEditPipeline` requires **diffusers >= 0.33.0** (merged Jan 2026). The install script upgrades it automatically.
+> `BriaFiboEditPipeline` was merged into diffusers in Jan 2026 (PR #12930) but is **not yet in any PyPI release**. The install script installs diffusers directly from the `main` branch via git.
 
 > [!CAUTION]
 > **Hardware:** ~16 GB+ GPU VRAM required (24 GB recommended).  

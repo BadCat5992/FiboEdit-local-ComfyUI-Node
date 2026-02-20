@@ -1,4 +1,5 @@
-diffusers>=0.33.0
+--extra-index-url https://pypi.org/simple/
+git+https://github.com/huggingface/diffusers.git
 transformers
 accelerate
 huggingface_hub

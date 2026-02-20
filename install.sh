@@ -8,25 +8,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "=== Fibo Edit Node — Setup ==="
 echo ""
 
-# 1. Install / upgrade Python packages
-echo ">>> Installing requirements (upgrading diffusers to >= 0.33.0) …"
-pip install --upgrade -r "$SCRIPT_DIR/requirements.txt"
+# 1. Install diffusers from git main branch
+#    BriaFiboEditPipeline was merged Jan 2026 (PR #12930) but is NOT in any
+#    PyPI release yet (latest PyPI release is 0.36.0 from Dec 2025).
+#    We MUST install from the main branch.
+echo ">>> Installing diffusers from git main branch (required for BriaFiboEditPipeline) …"
+pip install git+https://github.com/huggingface/diffusers.git
 
-# 2. Verify diffusers version
+# 2. Install other dependencies
 echo ""
-echo ">>> Checking diffusers version …"
-python -c "
-import diffusers
-v = diffusers.__version__
-print(f'  diffusers version: {v}')
-major, minor = [int(x) for x in v.split('.')[:2]]
-if major == 0 and minor < 33:
-    print('  ERROR: diffusers is still too old! Need >= 0.33.0')
-    print('  Try:  pip install --upgrade diffusers --force-reinstall')
-    exit(1)
-else:
-    print('  OK ✓')
-"
+echo ">>> Installing remaining dependencies …"
+pip install transformers accelerate huggingface_hub sentencepiece
 
 # 3. Verify BriaFiboEditPipeline import
 echo ""
@@ -35,8 +27,10 @@ python -c "
 from diffusers import BriaFiboEditPipeline
 print('  BriaFiboEditPipeline import OK ✓')
 " || {
-    echo "  ERROR: BriaFiboEditPipeline not found even after upgrade."
-    echo "  Try:  pip install diffusers --force-reinstall --upgrade"
+    echo ""
+    echo "  *** ERROR: BriaFiboEditPipeline still not found! ***"
+    echo "  Try running manually:"
+    echo "    pip install --force-reinstall git+https://github.com/huggingface/diffusers.git"
     exit 1
 }
 

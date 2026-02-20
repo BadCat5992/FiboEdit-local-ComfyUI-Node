@@ -19,19 +19,17 @@ from PIL import Image
 
 
 def _check_diffusers_version():
-    """Check that the installed diffusers version contains BriaFiboEditPipeline."""
+    """Verify BriaFiboEditPipeline is available (requires diffusers from git main)."""
     try:
-        import diffusers
-        version = getattr(diffusers, "__version__", "0.0.0")
-        major, minor = [int(x) for x in version.split(".")[:2]]
-        if major == 0 and minor < 33:
-            raise ImportError(
-                f"Your diffusers version is {version}, but BriaFiboEditPipeline "
-                f"requires diffusers >= 0.33.0 (merged Jan 2026).\n"
-                f"Upgrade with:  pip install --upgrade diffusers"
-            )
-    except ValueError:
-        pass  # Unable to parse version, let the import attempt speak for itself
+        from diffusers import BriaFiboEditPipeline  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "BriaFiboEditPipeline is not available in your diffusers install.\n"
+            "This class was merged into diffusers main branch (PR #12930, Jan 2026)\n"
+            "but is NOT in any PyPI release yet.\n\n"
+            "Fix:  pip install git+https://github.com/huggingface/diffusers.git\n"
+            "Or run:  bash install.sh"
+        )
 
 
 def _build_vgl_json(instruction: str) -> str:
