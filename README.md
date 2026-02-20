@@ -1,62 +1,96 @@
 # ComfyUI Fibo Edit Node (Real 8B)
 
-A custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that wraps the official **[briaai/Fibo-Edit](https://huggingface.co/briaai/Fibo-Edit)** model using standard Hugging Face Diffusers.
+A custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) that wraps the official **[briaai/Fibo-Edit](https://huggingface.co/briaai/Fibo-Edit)** model (8B params) using its native pipeline class.
+
+> [!IMPORTANT]
+> `BriaFiboEditPipeline` is **not** part of the standard `diffusers` PyPI package. It lives in the [Bria-AI/Fibo-Edit](https://github.com/Bria-AI/Fibo-Edit) GitHub repo, which this node clones automatically into `vendor/Fibo-Edit/`.
 
 > [!CAUTION]
-> **Hardware Requirement**: This node loads an ~8 Billion parameter model. It requires **16GB+ VRAM** (24GB recommended) to run effectively.
-> **Authentication**: You MUST have a Hugging Face account and accept the license for `briaai/Fibo-Edit`.
+> **Hardware**: Requires ~16GB+ GPU VRAM (24GB recommended).  
+> **Auth**: You must accept the model license on HuggingFace for `briaai/Fibo-Edit` and `briaai/FIBO-edit-prompt-to-JSON`.
 
-## Features
-
-- **Genuine 8B Model**: Uses the actual Bria Fibo Edit model, not an SD1.5 approximation.
-- **Diffusers Backend**: Leverages `trust_remote_code=True` to load the exact pipeline from Hugging Face.
-- **Simple Interface**: One node to rule them all. Input Image + Mask + Prompt -> Edited Image.
+---
 
 ## Installation
 
-1.  **Clone the repo**:
-    ```bash
-    cd ComfyUI/custom_nodes/
-    git clone https://github.com/YOUR_USERNAME/comfyui-fibo-edit
-    ```
+**Step 1 — Clone this node** into your ComfyUI custom_nodes folder:
+```bash
+cd ComfyUI/custom_nodes/
+git clone https://github.com/YOUR_USERNAME/comfyui-fibo-edit
+cd comfyui-fibo-edit
+```
 
-2.  **Install Requirements**:
-    ```bash
-    pip install -r requirements.txt
-    ```
+**Step 2 — Run install script** (downloads Fibo-Edit source + Python deps):
+```bash
+bash install.sh
+```
 
-3.  **Hugging Face Login** (REQUIRED):
-    You must be logged in to download the model.
-    ```bash
-    huggingface-cli login
-    # Paste your HF Token with permissions for briaai/Fibo-Edit
-    ```
+This clones `https://github.com/Bria-AI/Fibo-Edit` into `vendor/Fibo-Edit/` and installs all required packages.
 
-## Usage
+**Step 3 — Hugging Face login** (required to download model weights):
+```bash
+huggingface-cli login
+```
+Accept the license for both:
+- [`briaai/Fibo-Edit`](https://huggingface.co/briaai/Fibo-Edit)
+- [`briaai/FIBO-edit-prompt-to-JSON`](https://huggingface.co/briaai/FIBO-edit-prompt-to-JSON)
 
-1.  **Load Image**: Connect your source image.
-2.  **Selection**: Use a Mask node (e.g., "Load Image (as Mask)" or MaskEditor) to define the area to edit.
-3.  **Fibo Node**:
-    - Search for `Fibo Edit (8B Model)`.
-    - Connect `image` and `mask`.
-    - Enter your `prompt` (e.g., "A robot arm").
-4.  **Run**:
-    - **First Run**: Will take a long time to download the ~16GB+ model weights to your Hugging Face cache.
-    - **Subsequent Runs**: Will load from cache (still takes time to move to GPU).
+**Step 4 — Restart ComfyUI**.
+
+---
+
+## How It Works
+
+```
+Plain text instruction
+        │
+        ▼
+ briaai/FIBO-edit-prompt-to-JSON  (local VLM, no API key)
+        │
+        ▼
+  Structured VGL JSON prompt
+        │
+  + input image + optional mask
+        │
+        ▼
+ briaai/Fibo-Edit (BriaFiboEditPipeline, 8B)
+        │
+        ▼
+  Edited image
+```
+
+---
 
 ## Inputs
 
-| Input | Description |
-| :--- | :--- |
-| `image` | Source image to edit. |
-| `mask` | Binary mask defining the region to change. |
-| `prompt` | Text description of the desired content. |
-| `seed` | Random seed for reproducibility. |
-| `steps` | Inference steps (default 30). |
-| `guidance_scale` | CFG Scale (default 5.0). |
-| `precision` | `fp16` (faster, less VRAM) or `bf16`/`fp32`. |
+| Input | Type | Description |
+| :--- | :--- | :--- |
+| `image` | IMAGE | Source image to edit |
+| `instruction` | STRING | Plain English edit instruction (e.g. "make it look vintage") |
+| `mask` | MASK | *(Optional)* White = edit region, black = preserve |
+| `seed` | INT | Random seed |
+| `steps` | INT | Inference steps (default 30) |
+| `guidance_scale` | FLOAT | CFG scale (default 5.0) |
+| `precision` | COMBO | `bf16` (default), `fp16`, `fp32` |
+
+---
+
+## Usage in ComfyUI
+
+1. Search: `Fibo Edit (8B Model)` in the node browser.
+2. Connect: `Load Image` → `image`, `Load Image (as Mask)` → `mask`.
+3. Type your instruction.
+4. Queue Prompt.
+
+> **First run** downloads model weights from Hugging Face (~20 GB). Subsequent runs use the local cache.
+
+---
 
 ## Troubleshooting
 
-- **OOM (Out Of Memory)**: The model is too big for your GPU. Try `precision="fp16"`. If still crashing, you might not have enough VRAM.
-- **"Repository Not Found" / 401 Error**: You are not logged in or haven't accepted the model license on Hugging Face.
+| Error | Solution |
+| :--- | :--- |
+| `vendor/Fibo-Edit not found` | Run `bash install.sh` |
+| `401 / Repository Not Found` | Run `huggingface-cli login` and accept the model license |
+| CUDA out of memory | Use `bf16`, close other GPU apps, need 16GB+ VRAM |
+| `ModuleNotFoundError: src.edit_promptify` | Ensure you ran `bash install.sh` and the `vendor/Fibo-Edit` folder exists |
