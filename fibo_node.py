@@ -71,6 +71,8 @@ class FiboEditReal:
                 "steps":          ("INT",     {"default": 50,   "min": 1,    "max": 150}),
                 "guidance_scale": ("FLOAT",   {"default": 5.0,  "min": 0.0,  "max": 20.0, "step": 0.1}),
                 "precision":      (["bf16", "fp16", "fp32"], {"default": "bf16"}),
+                "offload_mode":   (["model_cpu_offload", "sequential_cpu_offload", "none"], {"default": "sequential_cpu_offload"}),
+                "unload_after_gen": ("BOOLEAN", {"default": False}),
             },
             "optional": {
                 "mask": ("MASK",),
@@ -85,8 +87,10 @@ class FiboEditReal:
     # Pipeline loader
     # ------------------------------------------------------------------
 
-    def _load_pipeline(self, precision: str):
+    def _load_pipeline(self, precision: str, offload_mode: str):
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         if FiboEditReal._pipeline is not None:
+            # Assumes offload_mode was configured upon initial load
             return FiboEditReal._pipeline
 
         _check_diffusers_version()
@@ -99,7 +103,7 @@ class FiboEditReal:
         dtype_map = {
             "fp16": torch.float16,
             "bf16": torch.bfloat16,
-            "fp32": torch.float32
+            "fp32": torch.float32,
         }
         torch_dtype = dtype_map.get(precision, torch.bfloat16)
 
@@ -109,7 +113,14 @@ class FiboEditReal:
         )
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        pipe.to(device)
+        if offload_mode == "model_cpu_offload":
+            print("[Fibo Edit Node] Enabling model CPU offload...")
+            pipe.enable_model_cpu_offload()
+        elif offload_mode == "sequential_cpu_offload":
+            print("[Fibo Edit Node] Enabling sequential CPU offload (extreme low VRAM)...")
+            pipe.enable_sequential_cpu_offload()
+        else:
+            pipe.to(device)
 
         FiboEditReal._pipeline = pipe
         print("[Fibo Edit Node] Pipeline loaded successfully.")
@@ -119,9 +130,23 @@ class FiboEditReal:
     # Main execution
     # ------------------------------------------------------------------
 
-    def apply_fibo(self, image, instruction, seed, steps, guidance_scale, precision, mask=None):
+    def apply_fibo(self, image, instruction, seed, steps, guidance_scale, precision, offload_mode, unload_after_gen, mask=None):
+        import comfy.model_management as mm
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        pipe   = self._load_pipeline(precision)
+        
+        if device == "cuda":
+            total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            if total_vram_gb < 18.0:
+                print(f"[Fibo Edit Node] ⚠️ Detected limited VRAM ({total_vram_gb:.1f} GB). Forcing VRAM-safe settings!")
+                precision = "bf16"
+                offload_mode = "sequential_cpu_offload"
+
+        print("[Fibo Edit Node] Forcing ComfyUI to unload its models to free VRAM for Diffusers pipeline...")
+        mm.unload_all_models()
+        mm.soft_empty_cache()
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        pipe   = self._load_pipeline(precision, offload_mode)
 
         # Build VGL JSON prompt from plain-text instruction
         edit_json = _build_vgl_json(instruction)
@@ -162,5 +187,16 @@ class FiboEditReal:
                 np.array(result_pil).astype(np.float32) / 255.0
             ).unsqueeze(0)
             batch_results.append(res_tensor)
+
+        if unload_after_gen:
+            print("[Fibo Edit Node] Unloading pipeline to free RAM/VRAM...")
+            del pipe
+            FiboEditReal._pipeline = None
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
+        elif offload_mode != "none":
+            # Free up lingering VRAM fragmentation
+            torch.cuda.empty_cache()
 
         return (torch.cat(batch_results, dim=0),)
